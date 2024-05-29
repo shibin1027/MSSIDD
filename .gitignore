@@ -1,9 +1,2 @@
-.DS_Store
-.idea/*
-experiments/*
-logs/*
-*results*
-*__pycache__*
-*.sh
-datasets
 basicsr.egg-info
+__pycache__
