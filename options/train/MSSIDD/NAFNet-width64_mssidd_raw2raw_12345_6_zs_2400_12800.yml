@@ -1,0 +1,113 @@
+# ------------------------------------------------------------------------
+# Copyright (c) 2022 megvii-model. All Rights Reserved.
+# ------------------------------------------------------------------------
+# Modified from BasicSR (https://github.com/xinntao/BasicSR)
+# Copyright 2018-2020 BasicSR Authors
+# ------------------------------------------------------------------------
+# cmd: CUDA_VISIBLE_DEVICES=0,1 python -m torch.distributed.launch --nproc_per_node=2 --master_port=4321 --use-env basicsr/train.py -opt options/train/MSSIDD/NAFNet-width64_mssidd_raw2raw_12345_6_zs_2400_12800.yml --launcher pytorch
+# cmd: CUDA_VISIBLE_DEVICES=6 python basicsr/train.py -opt options/train/MSSIDD/NAFNet-width64_mssidd_raw2raw_12345_6_zs_2400_12800.yml 
+# general settings
+name: NAFNet-width64_mssidd_raw2raw_12345_6_zs_2400_12800
+model_type: ImageRestorationMSSIDDDiscrModel
+scale: 1
+num_gpu: 2
+manual_seed: 10
+sensor_num: &sensor_num 5
+total_iter: &total_iter 100000
+iso: &iso [2400, 12800]
+
+datasets:
+  train:
+    name: MSSIDD
+    type: DenoiseMSSIDDUpiTrainValOfflineRAW2RAWDataset
+    image_root: '/xxx/data/SIDD/MSSIDD_RAW2RAW_HARD_Train/'
+    iso: *iso
+    sensor_list: ['sensor_01', 'sensor_02', 'sensor_03', 'sensor_04', 'sensor_05']
+    raw_img_size: 256
+    crop_img_size: 128
+    
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 2
+    batch_size_per_gpu: 2
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+  val:
+    name: MSSIDD_val
+    type: DenoiseMSSIDDUpiTrainValOfflineRAW2RAWDataset
+    image_root: '/xxx/data/SIDD/MSSIDD_RAW2RAW_HARD_Val/'
+    iso: *iso
+    sensor_list: ['sensor_06']
+    raw_img_size: 128
+    
+
+network_g:
+  type: NAFNetBase
+  width: 64
+  enc_blk_nums: [2, 2, 4, 8]
+  middle_blk_num: 12
+  dec_blk_nums: [2, 2, 2, 2]
+  sensor_num: *sensor_num
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+
+# training settings
+train:
+  optim_g:
+    type: AdamW
+    lr: !!float 1e-3
+    weight_decay: 0.
+    betas: [0.9, 0.9]
+
+  scheduler:
+    type: TrueCosineAnnealingLR
+    T_max: *total_iter
+    eta_min: !!float 1e-7
+
+  total_iter: *total_iter
+  warmup_iter: -1 # no warm up
+
+  # losses
+  pixel_opt:
+    type: PSNRLoss
+    loss_weight: 1
+    reduction: mean
+
+# validation settings
+val:
+  val_freq: !!float 1000 #2e4
+  save_img: false
+  use_image: True
+  raw_expand_ratio: 2.0
+  gamma_ratio: 2.2
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
+      ssim3d: false
+
+# logging settings
+logger:
+  print_freq: 50   # 200
+  save_checkpoint_freq: !!float 5e3
+  use_tb_logger: true
+  wandb:
+    project: ~
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
